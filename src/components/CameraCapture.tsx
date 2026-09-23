@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createHandLandmarker,
+  drawHands,
+  type HandLandmarker,
+} from "@/lib/handTracking";
 
 type CameraStatus =
   | "idle"
@@ -10,13 +15,21 @@ type CameraStatus =
   | "unavailable"
   | "unsupported";
 
+type TrackingStatus = "off" | "loading" | "ready" | "error";
+
 export default function CameraCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const landmarkerRef = useRef<HandLandmarker | null>(null);
+  const disposedRef = useRef(false);
 
   const [status, setStatus] = useState<CameraStatus>("idle");
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
+  const [tracking, setTracking] = useState<TrackingStatus>("off");
+  const [handCount, setHandCount] = useState(0);
+  const [fps, setFps] = useState(0);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -26,8 +39,30 @@ export default function CameraCapture() {
   // Always release the camera when this component goes away, so the
   // camera indicator light doesn't stay on after the user navigates away.
   useEffect(() => {
-    return () => stopStream();
+    disposedRef.current = false;
+    return () => {
+      disposedRef.current = true;
+      stopStream();
+      landmarkerRef.current?.close();
+      landmarkerRef.current = null;
+    };
   }, [stopStream]);
+
+  const loadTracking = useCallback(async () => {
+    setTracking("loading");
+    try {
+      const landmarker = await createHandLandmarker();
+      if (disposedRef.current) {
+        landmarker.close();
+        return;
+      }
+      landmarkerRef.current = landmarker;
+      setTracking("ready");
+    } catch (error) {
+      console.error("Hand tracking failed to load", error);
+      if (!disposedRef.current) setTracking("error");
+    }
+  }, []);
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -36,6 +71,12 @@ export default function CameraCapture() {
     }
 
     setStatus("requesting");
+
+    // Fetch the model while the permission prompt is open, so tracking is
+    // usually ready by the time the feed appears.
+    if (!landmarkerRef.current && tracking !== "loading") {
+      void loadTracking();
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -61,7 +102,60 @@ export default function CameraCapture() {
       }
       setStatus("unavailable");
     }
-  }, []);
+  }, [loadTracking, tracking]);
+
+  // Per-frame tracking loop. Runs only while the live feed is visible, and
+  // restarts cleanly after a retake.
+  useEffect(() => {
+    if (status !== "live" || tracking !== "ready" || capturedFrame) return;
+
+    const video = videoRef.current;
+    const overlay = overlayRef.current;
+    const landmarker = landmarkerRef.current;
+    const context = overlay?.getContext("2d");
+    if (!video || !overlay || !landmarker || !context) return;
+
+    let frameId = 0;
+    let lastVideoTime = -1;
+    let lastHandCount = -1;
+    let framesSinceSample = 0;
+    let sampleStart = performance.now();
+
+    const tick = () => {
+      frameId = requestAnimationFrame(tick);
+
+      // Only run inference on new video frames; rAF can fire faster than
+      // the camera delivers them.
+      if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
+      lastVideoTime = video.currentTime;
+
+      if (overlay.width !== video.videoWidth) overlay.width = video.videoWidth;
+      if (overlay.height !== video.videoHeight) overlay.height = video.videoHeight;
+
+      const now = performance.now();
+      const result = landmarker.detectForVideo(video, now);
+      drawHands(context, result);
+
+      // Throttle React updates — the canvas redraws every frame, but the
+      // HUD text only needs to change when its value does.
+      if (result.landmarks.length !== lastHandCount) {
+        lastHandCount = result.landmarks.length;
+        setHandCount(lastHandCount);
+      }
+      framesSinceSample++;
+      if (now - sampleStart >= 500) {
+        setFps(Math.round((framesSinceSample * 1000) / (now - sampleStart)));
+        framesSinceSample = 0;
+        sampleStart = now;
+      }
+    };
+    frameId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      context.clearRect(0, 0, overlay.width, overlay.height);
+    };
+  }, [status, tracking, capturedFrame]);
 
   const captureFrame = useCallback(() => {
     const video = videoRef.current;
@@ -96,6 +190,33 @@ export default function CameraCapture() {
             status === "live" && !capturedFrame ? "block" : "hidden"
           }`}
         />
+
+        {/* Same object-cover sizing as the video, so landmark coordinates
+            (normalized to the video frame) line up with the visible feed. */}
+        <canvas
+          ref={overlayRef}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
+            status === "live" && !capturedFrame ? "block" : "hidden"
+          }`}
+        />
+
+        {status === "live" && !capturedFrame && (
+          <div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs text-zinc-200 backdrop-blur">
+            {tracking === "loading" && "Loading hand tracking…"}
+            {tracking === "error" && (
+              <span className="text-red-400">Hand tracking unavailable</span>
+            )}
+            {tracking === "ready" &&
+              (handCount === 0 ? (
+                "Show your hand to the camera"
+              ) : (
+                <span>
+                  <span className="text-emerald-400">●</span> Tracking{" "}
+                  {handCount} {handCount === 1 ? "hand" : "hands"} · {fps} fps
+                </span>
+              ))}
+          </div>
+        )}
 
         {capturedFrame && (
           // eslint-disable-next-line @next/next/no-img-element -- local data URL, not an optimizable remote asset
@@ -183,8 +304,8 @@ export default function CameraCapture() {
       </div>
 
       <p className="max-w-md text-center text-xs text-zinc-500">
-        Your camera feed stays in this browser tab. Nothing is uploaded,
-        recorded, or sent anywhere.
+        Your camera feed and hand tracking stay in this browser tab. Nothing is
+        uploaded, recorded, or sent anywhere.
       </p>
     </div>
   );

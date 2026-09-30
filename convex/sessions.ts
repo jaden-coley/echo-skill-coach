@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { gripValidator, metricsValidator } from "./schema";
 import { queueRecap } from "./recap";
 import { CHOPSTICKS } from "./skills";
+import { summarizeStruggles } from "./struggles";
 
 /*
  * Session lifecycle + everything the coach records while a learner practices.
@@ -211,7 +212,7 @@ export const get = query({
         .query("corrections")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
         .order("desc")
-        .take(20),
+        .take(300),
       ctx.db
         .query("metricSamples")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
@@ -224,7 +225,8 @@ export const get = query({
       skill,
       stepEvents: stepEvents.reverse(),
       checks,
-      corrections,
+      corrections: corrections.slice(0, 20),
+      struggles: summarizeStruggles(corrections).slice(0, 3),
       // Oldest first, for charting.
       samples: samples.reverse(),
     };

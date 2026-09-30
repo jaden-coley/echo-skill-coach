@@ -3,7 +3,7 @@ import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { authComponent } from "./auth";
-import { FAULT_COACHING } from "./skills";
+import { summarizeStruggles } from "./struggles";
 
 /*
  * End-of-session recap email. Queued through the Resend component (durable,
@@ -40,7 +40,7 @@ export async function queueRecap(ctx: MutationCtx, session: Doc<"sessions">) {
     .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
     .take(300);
 
-  const struggle = topStruggle(corrections);
+  const struggle = summarizeStruggles(corrections)[0] ?? null;
   const stepsTotal = skill?.steps.length ?? 4;
   const reached = Math.min(session.highestStep, stepsTotal);
   const reachedTitle = skill?.steps[reached - 1]?.title ?? `Step ${reached}`;
@@ -61,27 +61,6 @@ export async function queueRecap(ctx: MutationCtx, session: Doc<"sessions">) {
     }),
   });
   await ctx.db.patch("sessions", session._id, { recapQueuedAt: Date.now() });
-}
-
-/** The mistake corrected most often this session, with what to practice. */
-function topStruggle(corrections: Doc<"corrections">[]) {
-  const counts = new Map<string, number>();
-  for (const c of corrections) {
-    // Tracker faults escalate as "anchor#2" etc. — count them together.
-    const key = c.source === "tracker" ? c.faultId.split("#")[0] : "ai";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const [key, count] =
-    [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
-  if (!key || !count) return null;
-  const coaching = FAULT_COACHING[key];
-  if (coaching) return { ...coaching, count };
-
-  // The AI's own words, for faults only it can see (e.g. crossed tips).
-  const latestAi = corrections.find((c) => c.source === "ai");
-  return latestAi
-    ? { label: "Getting the grip the AI coach could confirm", tip: latestAi.message, count }
-    : null;
 }
 
 function recapHtml(data: {

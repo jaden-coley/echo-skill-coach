@@ -13,6 +13,7 @@ import type * as http from "../http.js";
 import type * as recap from "../recap.js";
 import type * as sessions from "../sessions.js";
 import type * as skills from "../skills.js";
+import type * as struggles from "../struggles.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   recap: typeof recap;
   sessions: typeof sessions;
   skills: typeof skills;
+  struggles: typeof struggles;
 }>;
 
 /**

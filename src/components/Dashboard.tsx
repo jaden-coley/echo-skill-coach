@@ -142,6 +142,8 @@ function SessionDetail({
         />
       </div>
 
+      <WhatToWorkOn struggles={data.struggles} />
+
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
         <h3 className="font-semibold">Isolation over this session</h3>
         <p className="mb-3 text-xs text-zinc-500">
@@ -172,6 +174,43 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 type SessionData = FunctionReturnType<typeof api.sessions.get>;
+
+/** The session's most frequent mistakes, each with the drill that fixes it. */
+function WhatToWorkOn({ struggles }: { struggles: SessionData["struggles"] }) {
+  const most = struggles[0]?.count ?? 1;
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+      <h3 className="font-semibold">What to work on</h3>
+      <p className="mb-3 text-xs text-zinc-500">
+        Your most frequent corrections this session, and how to fix each one.
+      </p>
+      {struggles.length === 0 ? (
+        <p className="text-sm text-zinc-500">No corrections yet — keep practicing.</p>
+      ) : (
+        <ol className="flex flex-col gap-4">
+          {struggles.map((s, i) => (
+            <li key={s.key}>
+              <div className="flex items-baseline justify-between gap-3">
+                <p className={`text-sm font-medium ${i === 0 ? "text-amber-200" : "text-zinc-200"}`}>
+                  {i === 0 && <span className="mr-1.5 text-xs text-amber-400">Top focus ·</span>}
+                  {s.label}
+                </p>
+                <span className="shrink-0 font-mono text-xs text-zinc-400">{s.count}×</span>
+              </div>
+              <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-zinc-400"
+                  style={{ width: `${Math.round((s.count / most) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">{s.tip}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
 
 function Timeline({ data }: { data: SessionData }) {
   const stepTitle = (step: number) => data.skill?.steps[step - 1]?.title ?? `Step ${step}`;

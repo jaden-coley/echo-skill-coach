@@ -75,10 +75,11 @@ function recapHtml(data: {
   const { session, struggle } = data;
   const minutes = Math.max(1, Math.round(session.activeSeconds / 60));
   const checks = session.checksPassed + session.checksFailed;
-  const stat = (label: string, value: string) =>
-    `<td style="padding:12px;border:1px solid #27272a;border-radius:8px;">
+  const stat = (label: string, value: string, explain: string) =>
+    `<td style="padding:12px;border:1px solid #27272a;border-radius:8px;vertical-align:top;">
        <div style="font-size:12px;color:#a1a1aa;">${label}</div>
        <div style="font-size:22px;font-weight:600;color:#fafafa;margin-top:4px;">${value}</div>
+       <div style="font-size:11px;line-height:1.4;color:#71717a;margin-top:6px;">${explain}</div>
      </td>`;
 
   return `<!doctype html>
@@ -90,9 +91,17 @@ function recapHtml(data: {
       You reached <strong style="color:#fafafa;">step ${data.reached} of ${data.stepsTotal}: ${escapeHtml(data.reachedTitle)}</strong>.
     </p>
     <table role="presentation" cellspacing="8" style="width:100%;margin:0 -8px 20px;"><tr>
-      ${stat("Practice time", `${minutes} min`)}
-      ${stat("AI checks passed", checks ? `${session.checksPassed} of ${checks}` : "—")}
-      ${stat("Best isolation", session.bestIsolation === undefined ? "—" : `${Math.round(session.bestIsolation)}%`)}
+      ${stat("Practice time", `${minutes} min`, "Time spent actively opening and closing.")}
+      ${stat(
+        "Grip checks",
+        checks ? `${session.checksPassed} of ${checks}` : "—",
+        "Times the AI coach looked at your chopsticks and confirmed you had it right.",
+      )}
+      ${stat(
+        "Finger control",
+        session.bestIsolation === undefined ? "—" : `${Math.round(session.bestIsolation)}%`,
+        "Your best share of the motion coming from your pointer + middle fingers. 70%+ is great.",
+      )}
     </tr></table>
     ${
       struggle

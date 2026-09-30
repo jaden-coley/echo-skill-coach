@@ -68,7 +68,7 @@ export default function IsolationChart({
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="h-auto w-full touch-none"
           role="img"
-          aria-label={`Isolation over the session, latest ${Math.round(
+          aria-label={`Finger control over the session, latest ${Math.round(
             points[points.length - 1].isolation,
           )}%`}
           onPointerMove={onPointerMove}
@@ -168,7 +168,7 @@ export default function IsolationChart({
               {Math.round(active.isolation)}%
             </p>
             <p className="text-zinc-400">
-              isolation · {new Date(active.time).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
+              finger control · {new Date(active.time).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
             </p>
           </div>
         )}
@@ -180,7 +180,7 @@ export default function IsolationChart({
           <thead>
             <tr className="text-zinc-400">
               <th className="py-1 font-normal">Time</th>
-              <th className="py-1 font-normal">Isolation</th>
+              <th className="py-1 font-normal">Finger control</th>
             </tr>
           </thead>
           <tbody>

@@ -33,7 +33,7 @@ const DETAILS: { key: keyof ChopstickMetrics; label: string; unit: string; hint:
   },
   {
     key: "isolation",
-    label: "Isolation",
+    label: "Finger control",
     unit: "%",
     hint: "Share of motion from the index + middle fingers",
   },

@@ -133,19 +133,33 @@ function SessionDetail({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="AI checks passed" value={`${session.checksPassed}`} sub={`of ${session.checksPassed + session.checksFailed}`} />
-        <Stat label="Corrections given" value={`${session.correctionsShown}`} />
-        <Stat label="Practice time" value={formatDuration(session.activeSeconds)} />
         <Stat
-          label="Best isolation"
+          label="Grip checks"
+          value={`${session.checksPassed}`}
+          sub={`of ${session.checksPassed + session.checksFailed}`}
+          explain="Times the AI coach looked and confirmed you had it right"
+        />
+        <Stat
+          label="Corrections given"
+          value={`${session.correctionsShown}`}
+          explain="Tips the coach gave you along the way"
+        />
+        <Stat
+          label="Practice time"
+          value={formatDuration(session.activeSeconds)}
+          explain="Time spent actively opening and closing"
+        />
+        <Stat
+          label="Finger control"
           value={session.bestIsolation === undefined ? "—" : `${Math.round(session.bestIsolation)}%`}
+          explain="Best share of motion from your pointer + middle fingers (70%+ is great)"
         />
       </div>
 
       <WhatToWorkOn struggles={data.struggles} />
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-        <h3 className="font-semibold">Isolation over this session</h3>
+        <h3 className="font-semibold">Finger control over this session</h3>
         <p className="mb-3 text-xs text-zinc-500">
           Share of the motion coming from your pointer + middle fingers — higher means a
           steadier bottom chopstick.
@@ -161,7 +175,17 @@ function SessionDetail({
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({
+  label,
+  value,
+  sub,
+  explain,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  explain: string;
+}) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
       <p className="text-xs text-zinc-400">{label}</p>
@@ -169,6 +193,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
         {value}
         {sub && <span className="ml-1 text-xs text-zinc-500">{sub}</span>}
       </p>
+      <p className="mt-1 text-[11px] leading-snug text-zinc-500">{explain}</p>
     </div>
   );
 }

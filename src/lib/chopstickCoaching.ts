@@ -62,6 +62,8 @@ export interface LessonView {
   title: string;
   instructions: string[];
   feedback: Feedback | null;
+  /** 0–1 progress toward passing the current step; null on the last step. */
+  progress: number | null;
 }
 
 type StepId = "pick-up" | "grip" | "motion" | "practice";
@@ -72,6 +74,9 @@ const STEPS: {
   instructions: string[];
   holdMs: number;
   verify?: VisionCheck;
+  // Good time adds up across brief slips instead of restarting from zero —
+  // for motion, where one noisy moment shouldn't erase real progress.
+  cumulative?: boolean;
 }[] = [
   {
     id: "pick-up",
@@ -105,7 +110,8 @@ const STEPS: {
       "Your thumb, ring finger, and the bottom chopstick stay completely still.",
       "Go slowly — open, close, open, close.",
     ],
-    holdMs: 3000,
+    holdMs: 4000,
+    cumulative: true,
   },
   {
     id: "practice",
@@ -216,6 +222,8 @@ type Verdict = ({ stepIndex: number } & VisionVerdict) | "unavailable";
 export class ChopstickLesson {
   private stepIndex = 0;
   private passingSince: number | null = null;
+  private goodMs = 0;
+  private lastUpdate: number | null = null;
   private failingSince: number | null = null;
   private feedback = new FeedbackStabilizer();
   private checking = false;
@@ -239,11 +247,18 @@ export class ChopstickLesson {
 
     this.applyVerdict(now);
 
+    // Cap each frame gap so a stalled tab can't bank a big chunk of "good" time.
+    const dt = this.lastUpdate === null ? 0 : Math.min(now - this.lastUpdate, 300);
+    this.lastUpdate = now;
+
     // Advance once the step's goal has held steadily (and, for steps the
     // tracker can't fully judge, the AI coach has confirmed it).
     if (!fault) {
       this.passingSince ??= now;
-      const held = now - this.passingSince >= step.holdMs;
+      this.goodMs += dt;
+      const held = step.cumulative
+        ? this.goodMs >= step.holdMs
+        : now - this.passingSince >= step.holdMs;
       if (held && this.stepIndex < STEPS.length - 1) {
         if (!step.verify) {
           this.goTo(this.stepIndex + 1);
@@ -295,7 +310,19 @@ export class ChopstickLesson {
       title: current.title,
       instructions: current.instructions,
       feedback: shown,
+      progress: this.progress(now),
     };
+  }
+
+  private progress(now: number) {
+    const step = STEPS[this.stepIndex];
+    if (!Number.isFinite(step.holdMs)) return null;
+    const held = step.cumulative
+      ? this.goodMs
+      : this.passingSince === null
+        ? 0
+        : now - this.passingSince;
+    return Math.min(1, held / step.holdMs);
   }
 
   private startCheck(check: VisionCheck, snapshot: ChopstickSnapshot) {
@@ -370,6 +397,7 @@ export class ChopstickLesson {
     // step the user just left.
     this.feedback.reset();
     this.passingSince = null;
+    this.goodMs = 0;
     this.failingSince = null;
     this.aiFeedback = null;
   }
@@ -389,10 +417,10 @@ function findFault(snapshot: ChopstickSnapshot, step: StepId): Feedback | null {
   if (step === "grip") return null;
 
   if (state === "idle") return FEEDBACK.still;
-  // Only blame the ring finger when it moves nearly as much as the pivot
-  // fingers — a hidden ring finger gets estimated with a little sympathetic
-  // motion even when the user is doing it right.
-  if (metrics.anchorMovement.status !== "good" && metrics.isolation.value < 60) {
+  // Only blame the ring finger when it moves *more* than the pivot fingers —
+  // a ring finger hidden under the bottom stick gets estimated with a lot of
+  // sympathetic motion even when the user is doing it right.
+  if (metrics.anchorMovement.status !== "good" && metrics.isolation.value < 50) {
     return FEEDBACK.anchor;
   }
   if (metrics.pivotRange.status !== "good") return FEEDBACK.wider;

@@ -33,7 +33,9 @@ const RING = [13, 14, 15, 16];
 // Where the thumb presses the top stick in a pencil grip.
 const PENCIL_CONTACTS = [6, 7, 10, 11];
 
-const WINDOW_MS = 1500;
+// Long enough to cover a full slow open–close, and to average away the
+// frame-to-frame noise of fingers hidden behind the sticks.
+const WINDOW_MS = 2500;
 const MIN_SAMPLES = 12;
 const HAND_LOST_MS = 400;
 // A palm that suddenly changes size by more than this is a mis-tracked frame

@@ -80,6 +80,14 @@ export default function CoachingPanel({
           </div>
         </div>
         <h2 className="text-lg font-semibold">{lesson.title}</h2>
+        {lesson.progress !== null && lesson.progress > 0 && (
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-emerald-400 transition-[width] duration-300"
+              style={{ width: `${Math.round(lesson.progress * 100)}%` }}
+            />
+          </div>
+        )}
         <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-zinc-300">
           {lesson.instructions.map((line) => (
             <li key={line}>{line}</li>
@@ -147,7 +155,7 @@ export default function CoachingPanel({
               ` · pivot bend ${snapshot.debug.pivotBend.toFixed(0)}° · ring bend ${snapshot.debug.anchorBend.toFixed(0)}° · thumb gap ${snapshot.debug.thumbGap.toFixed(2)}`}
             <br />
             {fps} fps · tracking quality {snapshot?.trackingQuality ?? 0}% · measured
-            over the last 1.5 s
+            over the last 2.5 s
           </p>
         </div>
       )}

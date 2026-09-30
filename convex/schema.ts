@@ -54,6 +54,8 @@ export default defineSchema({
     activeSeconds: v.number(),
     bestIsolation: v.optional(v.number()),
     lastMetrics: v.optional(metricsValidator),
+    // Set once the end-of-session recap email has been queued.
+    recapQueuedAt: v.optional(v.number()),
   })
     .index("by_learnerKey", ["learnerKey"])
     .index("by_userToken", ["userToken"]),

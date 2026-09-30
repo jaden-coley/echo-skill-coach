@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { gripValidator, metricsValidator } from "./schema";
+import { queueRecap } from "./recap";
 import { CHOPSTICKS } from "./skills";
 
 /*
@@ -94,6 +95,8 @@ export const end = mutation({
     const session = await ownedSession(ctx, sessionId, learnerKey);
     if (session.status === "active") {
       await ctx.db.patch("sessions", sessionId, { status: "ended", endedAt: Date.now() });
+      // Signed-in learners get a recap email, queued in this same transaction.
+      if (session.userToken) await queueRecap(ctx, session);
     }
     return null;
   },

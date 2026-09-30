@@ -1,6 +1,6 @@
 "use client";
 
-import { useConvex } from "convex/react";
+import { useConvex, useConvexAuth } from "convex/react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CoachingPanel from "@/components/CoachingPanel";
@@ -25,7 +25,8 @@ type CameraStatus =
   | "live"
   | "denied"
   | "unavailable"
-  | "unsupported";
+  | "unsupported"
+  | "finished";
 
 type TrackingStatus = "off" | "loading" | "ready" | "error";
 
@@ -36,6 +37,7 @@ export default function CameraCapture() {
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const disposedRef = useRef(false);
   const convex = useConvex();
+  const { isAuthenticated } = useConvexAuth();
 
   const [status, setStatus] = useState<CameraStatus>("idle");
   const [tracking, setTracking] = useState<TrackingStatus>("off");
@@ -48,6 +50,13 @@ export default function CameraCapture() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }, []);
+
+  // Stopping the camera ends the tracking loop, whose cleanup ends the Convex
+  // session — which queues the recap email for signed-in learners.
+  const finishSession = useCallback(() => {
+    stopStream();
+    setStatus("finished");
+  }, [stopStream]);
 
   // Always release the camera when this component goes away, so the
   // camera indicator light doesn't stay on after the user navigates away.
@@ -246,6 +255,31 @@ export default function CameraCapture() {
               </>
             )}
 
+            {status === "finished" && (
+              <>
+                <p className="text-lg font-semibold text-white">Session saved ✓</p>
+                <p className="max-w-sm text-sm text-zinc-400">
+                  {isAuthenticated
+                    ? "Your recap — with what to focus on next time — is on its way to your inbox."
+                    : "Sign in next time and E.C.H.O. will email you a recap with what to focus on."}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={startCamera}
+                    className="rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200"
+                  >
+                    Practice again
+                  </button>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full border border-zinc-700 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+                  >
+                    See your progress
+                  </Link>
+                </div>
+              </>
+            )}
+
             {status === "requesting" && (
               <p className="text-sm text-zinc-400">Requesting camera access…</p>
             )}
@@ -289,13 +323,21 @@ export default function CameraCapture() {
       )}
 
       {recording && (
-        <Link
-          href="/dashboard"
-          target="_blank"
-          className="text-xs text-emerald-400/80 underline-offset-4 hover:underline"
-        >
-          ● Saving your progress live — open your dashboard ↗
-        </Link>
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={finishSession}
+            className="rounded-full border border-zinc-700 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+          >
+            {isAuthenticated ? "Finish session & email my recap" : "Finish session"}
+          </button>
+          <Link
+            href="/dashboard"
+            target="_blank"
+            className="text-xs text-emerald-400/80 underline-offset-4 hover:underline"
+          >
+            ● Saving your progress live — open your dashboard ↗
+          </Link>
+        </div>
       )}
 
       <p className="max-w-md text-center text-xs text-zinc-500">

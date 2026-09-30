@@ -8,13 +8,19 @@
  * @module
  */
 
+import type * as sessions from "../sessions.js";
+import type * as skills from "../skills.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  sessions: typeof sessions;
+  skills: typeof skills;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.

@@ -1,4 +1,8 @@
-import type { ChopstickSnapshot, GripShape } from "./chopstickFeatures";
+import type {
+  ChopstickMetrics,
+  ChopstickSnapshot,
+  GripShape,
+} from "./chopstickFeatures";
 
 /*
  * Guided chopstick lesson. Walks a complete beginner through one step at a
@@ -13,11 +17,38 @@ import type { ChopstickSnapshot, GripShape } from "./chopstickFeatures";
 
 export type VisionCheck = "holding" | "grip";
 
+export interface VisionVerdict {
+  pass: boolean;
+  issue: string;
+  correction: string;
+  confidence: number;
+}
+
 /** Resolves to the AI's verdict, or null if the AI coach is unreachable. */
 export type Verifier = (
   check: VisionCheck,
   gripShape: GripShape | null,
-) => Promise<{ pass: boolean; correction: string } | null>;
+) => Promise<VisionVerdict | null>;
+
+/** Everything worth recording about a lesson, as it happens. */
+export type LessonEvent =
+  | { type: "step"; step: number; kind: "passed" | "sent-back" }
+  | {
+      type: "check";
+      step: number;
+      check: VisionCheck;
+      verdict: VisionVerdict;
+      gripShape: GripShape | null;
+      metrics: ChopstickMetrics | null;
+      latencyMs: number;
+    }
+  | {
+      type: "correction";
+      step: number;
+      source: "tracker" | "ai";
+      faultId: string;
+      message: string;
+    };
 
 export interface Feedback {
   id: string;
@@ -180,7 +211,7 @@ const REGRESS_MS = 1500;
 const ADJUST_MS = 3000;
 const AI_PRAISE_MS = 6000;
 
-type Verdict = { stepIndex: number; pass: boolean; correction: string } | "unavailable";
+type Verdict = ({ stepIndex: number } & VisionVerdict) | "unavailable";
 
 export class ChopstickLesson {
   private stepIndex = 0;
@@ -195,8 +226,12 @@ export class ChopstickLesson {
   private aiFeedback: Feedback | null = null;
   private aiFeedbackUntil = 0;
   private aiMessages = 0;
+  private lastShownId: string | null = null;
 
-  constructor(private readonly verify: Verifier) {}
+  constructor(
+    private readonly verify: Verifier,
+    private readonly onEvent: (event: LessonEvent) => void = () => {},
+  ) {}
 
   update(snapshot: ChopstickSnapshot, now: number): LessonView {
     const step = STEPS[this.stepIndex];
@@ -213,7 +248,7 @@ export class ChopstickLesson {
         if (!step.verify) {
           this.goTo(this.stepIndex + 1);
         } else if (!this.checking && now >= this.recheckAt) {
-          this.startCheck(step.verify, snapshot.grip);
+          this.startCheck(step.verify, snapshot);
         }
       }
     } else {
@@ -240,21 +275,47 @@ export class ChopstickLesson {
       this.aiFeedback ??
       praise(current.id);
 
+    const shown = this.feedback.update(message, now);
+    if (shown.id !== this.lastShownId) {
+      this.lastShownId = shown.id;
+      if (shown.tone === "fix") {
+        this.onEvent({
+          type: "correction",
+          step: this.stepIndex + 1,
+          source: shown.id.startsWith("ai-") ? "ai" : "tracker",
+          faultId: shown.id,
+          message: shown.message,
+        });
+      }
+    }
+
     return {
       step: this.stepIndex + 1,
       totalSteps: STEPS.length,
       title: current.title,
       instructions: current.instructions,
-      feedback: this.feedback.update(message, now),
+      feedback: shown,
     };
   }
 
-  private startCheck(check: VisionCheck, grip: GripShape | null) {
+  private startCheck(check: VisionCheck, snapshot: ChopstickSnapshot) {
     const stepIndex = this.stepIndex;
+    const startedAt = performance.now();
     this.checking = true;
-    this.verify(check, grip)
+    this.verify(check, snapshot.grip)
       .then((result) => {
         this.verdict = result ? { stepIndex, ...result } : "unavailable";
+        if (result) {
+          this.onEvent({
+            type: "check",
+            step: stepIndex + 1,
+            check,
+            verdict: result,
+            gripShape: snapshot.grip,
+            metrics: snapshot.metrics,
+            latencyMs: Math.round(performance.now() - startedAt),
+          });
+        }
       })
       .catch(() => {
         this.verdict = "unavailable";
@@ -282,7 +343,7 @@ export class ChopstickLesson {
     if (verdict.stepIndex !== this.stepIndex) return;
 
     const feedback: Feedback = {
-      id: `ai-${++this.aiMessages}`,
+      id: `ai-${verdict.issue || "check"}-${++this.aiMessages}`,
       tone: verdict.pass ? "good" : "fix",
       message: verdict.correction,
     };
@@ -298,7 +359,13 @@ export class ChopstickLesson {
   }
 
   private goTo(stepIndex: number) {
+    const from = this.stepIndex;
     this.stepIndex = Math.min(stepIndex, STEPS.length - 1);
+    if (this.stepIndex > from) {
+      this.onEvent({ type: "step", step: from + 1, kind: "passed" });
+    } else if (this.stepIndex < from) {
+      this.onEvent({ type: "step", step: this.stepIndex + 1, kind: "sent-back" });
+    }
     // A new step starts with a clean slate — no lingering message from the
     // step the user just left.
     this.feedback.reset();

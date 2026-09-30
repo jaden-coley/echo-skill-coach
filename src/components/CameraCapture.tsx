@@ -1,11 +1,14 @@
 "use client";
 
+import { useConvex } from "convex/react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CoachingPanel from "@/components/CoachingPanel";
 import {
   ChopstickLesson,
   type LessonView,
   type Verifier,
+  type VisionVerdict,
 } from "@/lib/chopstickCoaching";
 import { ChopstickAnalyzer, type ChopstickSnapshot } from "@/lib/chopstickFeatures";
 import {
@@ -13,6 +16,8 @@ import {
   drawHands,
   type HandLandmarker,
 } from "@/lib/handTracking";
+import { getLearnerKey } from "@/lib/learnerKey";
+import { SessionRecorder } from "@/lib/sessionRecorder";
 
 type CameraStatus =
   | "idle"
@@ -30,12 +35,14 @@ export default function CameraCapture() {
   const streamRef = useRef<MediaStream | null>(null);
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const disposedRef = useRef(false);
+  const convex = useConvex();
 
   const [status, setStatus] = useState<CameraStatus>("idle");
   const [tracking, setTracking] = useState<TrackingStatus>("off");
   const [snapshot, setSnapshot] = useState<ChopstickSnapshot | null>(null);
   const [lesson, setLesson] = useState<LessonView | null>(null);
   const [fps, setFps] = useState(0);
+  const [recording, setRecording] = useState(false);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -121,7 +128,12 @@ export default function CameraCapture() {
     if (!video || !overlay || !landmarker || !context) return;
 
     const analyzer = new ChopstickAnalyzer();
-    const chopstickLesson = new ChopstickLesson(verifyWithAi(video));
+    const recorder = new SessionRecorder(convex, getLearnerKey());
+    recorder.sessionId.then(() => setRecording(true), () => {});
+    const chopstickLesson = new ChopstickLesson(verifyWithAi(video), (event) =>
+      recorder.record(event),
+    );
+    let lessonStep = 1;
     let frameId = 0;
     let lastVideoTime = -1;
     let lastSnapshotTime = 0;
@@ -153,7 +165,10 @@ export default function CameraCapture() {
       if (now - lastSnapshotTime >= 150) {
         const next = analyzer.snapshot(now);
         setSnapshot(next);
-        setLesson(chopstickLesson.update(next, now));
+        const view = chopstickLesson.update(next, now);
+        lessonStep = view.step;
+        setLesson(view);
+        recorder.sample(lessonStep, next, now);
         lastSnapshotTime = now;
       }
       framesSinceSample++;
@@ -168,10 +183,12 @@ export default function CameraCapture() {
     return () => {
       cancelAnimationFrame(frameId);
       context.clearRect(0, 0, overlay.width, overlay.height);
+      recorder.end();
       setSnapshot(null);
       setLesson(null);
+      setRecording(false);
     };
-  }, [status, tracking]);
+  }, [status, tracking, convex]);
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-4">
@@ -271,9 +288,20 @@ export default function CameraCapture() {
         <CoachingPanel lesson={lesson} snapshot={snapshot} fps={fps} />
       )}
 
+      {recording && (
+        <Link
+          href="/dashboard"
+          target="_blank"
+          className="text-xs text-emerald-400/80 underline-offset-4 hover:underline"
+        >
+          ● Saving your progress live — open your dashboard ↗
+        </Link>
+      )}
+
       <p className="max-w-md text-center text-xs text-zinc-500">
-        Your camera feed and hand tracking stay in this browser tab. Nothing is
-        uploaded, recorded, or sent anywhere.
+        Hand tracking runs in this browser tab and no video is recorded. When a
+        step needs confirming, one still frame is sent to the AI coach to check
+        your chopsticks, and your progress is saved to your dashboard.
       </p>
     </div>
   );
@@ -294,7 +322,7 @@ function verifyWithAi(video: HTMLVideoElement): Verifier {
       console.warn("AI check unavailable", await response.text());
       return null;
     }
-    return (await response.json()) as { pass: boolean; correction: string };
+    return (await response.json()) as VisionVerdict;
   };
 }
 

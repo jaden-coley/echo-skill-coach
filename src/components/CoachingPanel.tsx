@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { Feedback, LessonView } from "@/lib/chopstickCoaching";
+import {
+  minimumShowMs,
+  type Feedback,
+  type LessonView,
+} from "@/lib/chopstickCoaching";
 import type {
   ChopstickMetrics,
   ChopstickSnapshot,
@@ -86,12 +90,25 @@ export default function CoachingPanel({
       {feedback && (
         <div
           aria-live="polite"
-          className={`flex w-full items-start gap-3 rounded-2xl border px-5 py-4 ${style.box}`}
+          className={`relative w-full overflow-hidden rounded-2xl border px-5 py-4 ${style.box}`}
         >
-          <span aria-hidden className="text-xl leading-6">
-            {style.icon}
-          </span>
-          <p className="text-base font-medium leading-6">{feedback.message}</p>
+          <div className="flex items-start gap-3">
+            <span aria-hidden className="text-xl leading-6">
+              {style.icon}
+            </span>
+            <p className="text-base font-medium leading-6">{feedback.message}</p>
+          </div>
+          {feedback.tone === "fix" && (
+            // Drains over the correction's guaranteed reading time, so the
+            // user can see it won't vanish mid-sentence. Keyed so it restarts
+            // for each new correction.
+            <span
+              key={feedback.id}
+              aria-hidden
+              className="reading-timer absolute bottom-0 left-0 h-1 bg-amber-400/50"
+              style={{ animationDuration: `${minimumShowMs(feedback)}ms` }}
+            />
+          )}
         </div>
       )}
 

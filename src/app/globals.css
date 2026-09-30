@@ -24,3 +24,18 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes reading-timer {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.reading-timer {
+  animation-name: reading-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}

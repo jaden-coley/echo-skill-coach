@@ -175,9 +175,9 @@ const FEEDBACK = {
 // A grip that falls apart this long during the motion steps sends the user
 // back to the grip step.
 const REGRESS_MS = 1500;
-// After the AI rejects a step, give the user time to read and adjust before
-// checking again.
-const RECHECK_COOLDOWN_MS = 4000;
+// After the AI rejects a step, the next check waits until its correction has
+// been on screen long enough to read, plus this long to actually adjust.
+const ADJUST_MS = 3000;
 const AI_PRAISE_MS = 4000;
 
 type Verdict = { stepIndex: number; pass: boolean; correction: string } | "unavailable";
@@ -273,7 +273,7 @@ export class ChopstickLesson {
     // would hand out passes to an empty hand. Retry instead.
     if (verdict === "unavailable") {
       this.passingSince = null;
-      this.recheckAt = now + RECHECK_COOLDOWN_MS;
+      this.recheckAt = now + minimumShowMs(FEEDBACK.aiUnavailable) + ADJUST_MS;
       this.aiFeedback = FEEDBACK.aiUnavailable;
       this.aiFeedbackUntil = this.recheckAt;
       return;
@@ -291,7 +291,7 @@ export class ChopstickLesson {
     } else {
       // Make them hold the corrected position again before the next check.
       this.passingSince = null;
-      this.recheckAt = now + RECHECK_COOLDOWN_MS;
+      this.recheckAt = now + minimumShowMs(feedback) + ADJUST_MS;
     }
     this.aiFeedback = feedback;
     this.aiFeedbackUntil = verdict.pass ? now + AI_PRAISE_MS : Infinity;
@@ -344,13 +344,15 @@ function praise(step: StepId): Feedback {
 const CANDIDATE_MS = 700;
 
 /**
- * Corrections stay on screen long enough to actually read them: roughly
- * reading speed for their length, 2–3.5 s. Status and praise messages don't
- * hold — once "I can't see your hand" is no longer true, it shouldn't linger.
+ * Corrections stay on screen long enough to read them *and* try the fix:
+ * ~3 s to settle in plus a slow beginner reading pace per word, 4–9 s.
+ * Status and praise messages don't hold — once "I can't see your hand" is no
+ * longer true, it shouldn't linger.
  */
-function minimumShowMs(feedback: Feedback) {
+export function minimumShowMs(feedback: Feedback) {
   if (feedback.tone !== "fix") return 0;
-  return Math.min(3500, Math.max(2000, 800 + feedback.message.length * 25));
+  const words = feedback.message.split(/\s+/).length;
+  return Math.min(9000, Math.max(4000, 3000 + words * 350));
 }
 
 class FeedbackStabilizer {

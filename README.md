@@ -26,7 +26,9 @@ sessions.
    chopsticks. So before a grip step passes, one still frame goes to an OpenAI vision
    model that checks: are there really two chopsticks, in one hand, held correctly? It
    returns a structured verdict, and hard facts in the code gate it. The model can't wave
-   you through on its own.
+   you through on its own. If the finger tracker keeps flagging your ring finger, the
+   coach compares an *open* and a *closed* frame to judge the real goal directly: did
+   the bottom chopstick stay still while only the top one moved?
 5. **Remembers you.** Sign in and every session is saved to your account. The progress
    dashboard updates live while you practice, and finishing a session emails you a recap
    with the one thing to focus on next time.
@@ -45,8 +47,9 @@ webcam ─▶ MediaPipe hand landmarks (in browser)
        lesson engine ─── step gating, one correction at a time, escalating hints,
            │             progress that mistakes drain (you can't fake a pass)
            │
-           ├──▶ OpenAI vision (only at grip checkpoints) ── structured JSON verdict,
-           │        gated by code-checked facts (2 sticks, 1 hand, confidence ≥ 0.5)
+           ├──▶ OpenAI vision (grip checkpoints + open/closed motion check) ──
+           │        structured JSON verdict, gated by code-checked facts
+           │        (2 sticks, 1 hand, bottom stick still, confidence threshold)
            │
            └──▶ Convex ── sessions, steps, AI checks, corrections, metric samples
                     │     (live dashboard via reactive queries)
@@ -62,7 +65,7 @@ the one thing numbers can't: seeing the chopsticks themselves.
 | Sponsor | What it does in E.C.H.O. | Where |
 |---|---|---|
 | **Convex** | The whole backend: 6-table schema (skills, sessions, step events, AI checks, corrections, metric samples) with denormalized counters; every lesson event is written as it happens, and the dashboard is made of reactive queries, so it updates live with no refresh or polling. Also hosts Better Auth (component + HTTP routes), and queues the recap email through the Resend component in the same transaction that ends a session. | `convex/` |
-| **OpenAI** | Vision checkpoint for what hand tracking can't see (chopsticks present, correct grip, not a fist or crossed tips). Structured Outputs (strict JSON schema): `pass`, `issue`, `correction`, `confidence`, counts of sticks and hands. The verdict and the tracker's measurements at that moment are stored together. | `src/app/api/coach/check/route.ts` |
+| **OpenAI** | Vision checks for what hand tracking can't see: chopsticks present, correct grip (not a fist, not crossed), and — comparing an open and a closed frame — whether the bottom chopstick stays still. Structured Outputs (strict JSON schema): `pass`, `issue`, `correction`, `confidence`, counts of sticks and hands, bottom/top stick motion. The verdict and the tracker's measurements at that moment are stored together. | `src/app/api/coach/check/route.ts` |
 | **Better Auth** | Email + password accounts via `@convex-dev/better-auth`. Signing in claims the sessions you practiced on that device before signing in, so nothing is lost, and your history follows you to any device. Ownership is derived server-side from the auth token, never from client arguments. | `convex/auth.ts`, `src/components/AccountMenu.tsx` |
 | **Resend** | Session recap email via `@convex-dev/resend` (durable, batched, exactly once): steps reached, AI checks passed, practice time, best isolation, and your most-corrected mistake with a specific drill. | `convex/recap.ts` |
 
@@ -114,6 +117,7 @@ Open http://localhost:3000, allow camera access, and pick up some chopsticks.
 ## Privacy
 
 Hand tracking runs in your browser, and no video is recorded. At a grip checkpoint, a
-single still frame is sent to OpenAI to verify the chopsticks. Your measurements, lesson
+single still frame (or, for the motion check, two) is sent to OpenAI to verify the
+chopsticks. Your measurements, lesson
 events, and the AI's verdicts are stored in Convex so your progress can be shown back
 to you.

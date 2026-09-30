@@ -1,4 +1,6 @@
+import { ConvexHttpClient } from "convex/browser";
 import OpenAI from "openai";
+import { api } from "../../../../../convex/_generated/api";
 
 /*
  * Vision gate for the chopstick lesson. The in-browser hand tracker sees the
@@ -136,6 +138,24 @@ export async function POST(request: Request) {
     );
   }
 
+  // Reserve AI budget first (per person + daily total). Fail closed: if the
+  // budget can't be checked, don't spend money on a model call.
+  try {
+    const budget = await new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!).mutation(
+      api.aiBudget.reserveCheck,
+      { clientKey: await clientKey(request) },
+    );
+    if (!budget.ok) {
+      return Response.json(
+        { error: "AI check limit reached", retryAfter: budget.retryAfter },
+        { status: 429 },
+      );
+    }
+  } catch (error) {
+    console.error("AI budget check failed", error);
+    return Response.json({ error: "AI budget unavailable" }, { status: 503 });
+  }
+
   const client = new OpenAI();
   try {
     const response = await client.responses.create({
@@ -143,6 +163,9 @@ export async function POST(request: Request) {
       reasoning: { effort: "low" },
       instructions: `You are E.C.H.O., a patient chopstick coach for complete beginners.
 You are shown webcam frames of a learner. The camera is not mirrored.
+"Chopsticks" includes practice stand-ins: any two similar straight sticks such
+as pencils, pens, highlighters, markers, or skewers count as two chopsticks.
+Fingers, a single object, or something that isn't stick-shaped do not.
 Judge ONLY what you can actually see; if the chopsticks or fingers aren't
 visible enough to judge, fail and tell them how to hold their hand so the
 camera can see it.`,
@@ -214,6 +237,18 @@ camera can see it.`,
   }
 }
 
+/** A hash of the caller's IP: enough to tell people apart, without storing it. */
+async function clientKey(request: Request) {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "local";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  return Array.from(new Uint8Array(digest).slice(0, 12), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 function isJpegDataUrl(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -232,7 +267,7 @@ function factsCorrection(raw: {
     return "Use just one hand — your writing hand — and put the other one down.";
   }
   if (raw.chopsticks_visible < 2) {
-    return "I can't see both chopsticks. Turn your hand sideways so the camera can see both sticks clearly.";
+    return "I can't see two sticks. Hold two chopsticks — or two pencils or pens — in one hand, turned sideways so the camera can see both.";
   }
   if (raw.bottom_stick_still === false) {
     return "The bottom chopstick moved along with the top one. Press it into the dip of your thumb and keep your ring finger still while you open and close.";

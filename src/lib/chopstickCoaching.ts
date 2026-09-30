@@ -82,7 +82,7 @@ const STEPS: {
     id: "pick-up",
     title: "Pick up the chopsticks",
     instructions: [
-      "Pick up both chopsticks with your writing hand only.",
+      "Pick up both chopsticks with your writing hand only. No chopsticks? Two pencils, pens, or highlighters work for practice.",
       "Put your other hand down in your lap, out of the camera's view.",
       "Hold your chopstick hand up, turned sideways, so the camera can see both sticks.",
     ],

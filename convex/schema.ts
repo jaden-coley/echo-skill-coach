@@ -38,9 +38,11 @@ export default defineSchema({
   }).index("by_slug", ["slug"]),
 
   sessions: defineTable({
-    // Who practiced: an anonymous per-device key until sign-in lands; the
-    // sign-in identity is stored alongside when available.
+    // Who practiced: the anonymous per-device key always, plus the signed-in
+    // account (Convex tokenIdentifier) once the learner signs in. Signing in
+    // claims the device's earlier sessions, so progress follows the account.
     learnerKey: v.string(),
+    userToken: v.optional(v.string()),
     skillId: v.id("skills"),
     status: v.union(v.literal("active"), v.literal("ended")),
     endedAt: v.optional(v.number()),
@@ -52,7 +54,9 @@ export default defineSchema({
     activeSeconds: v.number(),
     bestIsolation: v.optional(v.number()),
     lastMetrics: v.optional(metricsValidator),
-  }).index("by_learnerKey", ["learnerKey"]),
+  })
+    .index("by_learnerKey", ["learnerKey"])
+    .index("by_userToken", ["userToken"]),
 
   stepEvents: defineTable({
     sessionId: v.id("sessions"),

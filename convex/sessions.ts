@@ -6,11 +6,18 @@ import { CHOPSTICKS } from "./skills";
 
 /*
  * Session lifecycle + everything the coach records while a learner practices.
- * Every function takes the session's learnerKey and checks it matches, so one
- * learner can't read or write another's sessions by guessing an id.
+ * A session belongs to the device that started it (learnerKey) and, once
+ * signed in, to the account (userToken, derived server-side from the auth
+ * token — never taken from arguments). Every function checks ownership, so
+ * one learner can't read or write another's sessions by guessing an id.
  */
 
 const sessionArgs = { sessionId: v.id("sessions"), learnerKey: v.string() };
+
+async function viewerToken(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  return identity?.tokenIdentifier ?? null;
+}
 
 async function ownedSession(
   ctx: QueryCtx | MutationCtx,
@@ -18,7 +25,13 @@ async function ownedSession(
   learnerKey: string,
 ) {
   const session = await ctx.db.get("sessions", sessionId);
-  if (!session || session.learnerKey !== learnerKey) {
+  const token = await viewerToken(ctx);
+  const owns =
+    session &&
+    (session.userToken
+      ? session.userToken === token
+      : session.learnerKey === learnerKey);
+  if (!session || !owns) {
     throw new Error("Session not found");
   }
   return session;
@@ -42,6 +55,7 @@ export const start = mutation({
   returns: v.id("sessions"),
   handler: async (ctx, { learnerKey }) => {
     const skillId = await ensureChopsticksSkill(ctx);
+    const userToken = (await viewerToken(ctx)) ?? undefined;
 
     // One live session per learner: close any left open (e.g. a closed tab).
     const recent = await ctx.db
@@ -60,6 +74,7 @@ export const start = mutation({
 
     return await ctx.db.insert("sessions", {
       learnerKey,
+      userToken,
       skillId,
       status: "active",
       currentStep: 1,
@@ -213,14 +228,52 @@ export const get = query({
   },
 });
 
-/** A learner's recent sessions, newest first. */
+/**
+ * The viewer's recent sessions, newest first: the account's sessions from any
+ * device when signed in, otherwise this device's unclaimed sessions.
+ */
 export const listForLearner = query({
   args: { learnerKey: v.string() },
   handler: async (ctx, { learnerKey }) => {
-    return await ctx.db
+    const token = await viewerToken(ctx);
+    if (token) {
+      return await ctx.db
+        .query("sessions")
+        .withIndex("by_userToken", (q) => q.eq("userToken", token))
+        .order("desc")
+        .take(20);
+    }
+    const deviceSessions = await ctx.db
       .query("sessions")
       .withIndex("by_learnerKey", (q) => q.eq("learnerKey", learnerKey))
       .order("desc")
       .take(20);
+    return deviceSessions.filter((s) => !s.userToken);
+  },
+});
+
+/**
+ * On sign-in, attach this device's earlier (anonymous) sessions to the
+ * account, so practice done before signing up isn't lost.
+ */
+export const claimDeviceSessions = mutation({
+  args: { learnerKey: v.string() },
+  returns: v.number(),
+  handler: async (ctx, { learnerKey }) => {
+    const token = await viewerToken(ctx);
+    if (!token) throw new Error("Sign in to save your progress");
+
+    const deviceSessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_learnerKey", (q) => q.eq("learnerKey", learnerKey))
+      .take(100);
+    let claimed = 0;
+    for (const session of deviceSessions) {
+      if (!session.userToken) {
+        await ctx.db.patch("sessions", session._id, { userToken: token });
+        claimed++;
+      }
+    }
+    return claimed;
   },
 });

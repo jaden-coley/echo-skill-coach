@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
+import AccountMenu from "@/components/AccountMenu";
 import IsolationChart from "@/components/IsolationChart";
 import { getLearnerKey } from "@/lib/learnerKey";
 
@@ -44,6 +45,7 @@ export default function Dashboard() {
           <Link href="/" className="text-zinc-400 hover:text-white">
             ← Back to practice
           </Link>
+          <AccountMenu />
         </div>
       </header>
 

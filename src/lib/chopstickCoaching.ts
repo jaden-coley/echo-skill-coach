@@ -178,7 +178,7 @@ const REGRESS_MS = 1500;
 // After the AI rejects a step, the next check waits until its correction has
 // been on screen long enough to read, plus this long to actually adjust.
 const ADJUST_MS = 3000;
-const AI_PRAISE_MS = 4000;
+const AI_PRAISE_MS = 6000;
 
 type Verdict = { stepIndex: number; pass: boolean; correction: string } | "unavailable";
 
@@ -344,15 +344,16 @@ function praise(step: StepId): Feedback {
 const CANDIDATE_MS = 700;
 
 /**
- * Corrections stay on screen long enough to read them *and* try the fix:
- * ~3 s to settle in plus a slow beginner reading pace per word, 4–9 s.
- * Status and praise messages don't hold — once "I can't see your hand" is no
- * longer true, it shouldn't linger.
+ * The pace should feel calm, not stressful. Corrections stay on screen long
+ * enough to read them slowly *and* try the fix (6–12 s); praise lingers long
+ * enough to enjoy (5 s). Status messages don't hold — once "I can't see your
+ * hand" is no longer true, it shouldn't linger.
  */
 export function minimumShowMs(feedback: Feedback) {
+  if (feedback.tone === "good") return 5000;
   if (feedback.tone !== "fix") return 0;
   const words = feedback.message.split(/\s+/).length;
-  return Math.min(9000, Math.max(4000, 3000 + words * 350));
+  return Math.min(12000, Math.max(6000, 4000 + words * 450));
 }
 
 class FeedbackStabilizer {

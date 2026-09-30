@@ -25,6 +25,8 @@ export async function createHandLandmarker(): Promise<HandLandmarker> {
 
   const options = {
     runningMode: "VIDEO" as const,
+    // Track two so we can catch a beginner using both hands; only one is
+    // analyzed.
     numHands: 2,
   };
 
@@ -55,10 +57,10 @@ const HAND_CONNECTIONS: [number, number][] = [
 
 const FINGERTIPS = new Set([4, 8, 12, 16, 20]);
 
-/** Draws every detected hand's skeleton onto a canvas sized to the video. */
+/** Draws each hand's skeleton onto a canvas sized to the video. */
 export function drawHands(
   context: CanvasRenderingContext2D,
-  result: HandLandmarkerResult,
+  hands: NormalizedLandmark[][],
 ) {
   const { width, height } = context.canvas;
   context.clearRect(0, 0, width, height);
@@ -67,7 +69,7 @@ export function drawHands(
   // at 480p and 1080p.
   const unit = Math.max(width, height) / 640;
 
-  for (const hand of result.landmarks) {
+  for (const hand of hands) {
     context.strokeStyle = "rgba(52, 211, 153, 0.9)";
     context.lineWidth = 3 * unit;
     context.lineCap = "round";

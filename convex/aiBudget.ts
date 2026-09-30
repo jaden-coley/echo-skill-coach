@@ -6,7 +6,8 @@ import { mutation } from "./_generated/server";
 /*
  * Caps OpenAI vision checks so a public link can't run up the API bill.
  * Every check reserves budget here before the model is called:
- *   perPerson — a burst of 12, refilling 30/hour: plenty for real practice
+ *   perPerson — a burst of 25, refilling 40/hour: a full first lesson with
+ *               retries fits comfortably
  *   total     — 300/day across everyone, a hard ceiling on daily spend
  * People are keyed by a hash of their IP (never the raw address).
  */
@@ -14,7 +15,7 @@ import { mutation } from "./_generated/server";
 const DAY = 24 * HOUR;
 
 const aiBudget = new RateLimiter(components.rateLimiter, {
-  perPerson: { kind: "token bucket", rate: 30, period: HOUR, capacity: 12 },
+  perPerson: { kind: "token bucket", rate: 40, period: HOUR, capacity: 25 },
   total: { kind: "fixed window", rate: 300, period: DAY },
 });
 

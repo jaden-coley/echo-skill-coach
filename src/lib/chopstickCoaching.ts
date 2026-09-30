@@ -15,7 +15,7 @@ import type {
  * to the AI coach, and the step only passes if it confirms.
  */
 
-export type VisionCheck = "holding" | "grip";
+export type VisionCheck = "holding" | "grip" | "motion";
 
 export interface VisionVerdict {
   pass: boolean;
@@ -186,6 +186,11 @@ const FEEDBACK = {
     tone: "good",
     message: "Good — one hand. Hold it there…",
   },
+  watchingClosely: {
+    id: "watching-closely",
+    tone: "info",
+    message: "Let me take a close look at your chopsticks — keep slowly opening and closing…",
+  },
   checking: {
     id: "checking",
     tone: "info",
@@ -218,7 +223,6 @@ const HINT_LADDERS: Record<string, string[]> = {
   anchor: [
     "Think of the bottom chopstick as glued in place: it sits in the dip between your thumb and pointer finger, and rests on the side of your ring finger's tip. Press it there lightly.",
     "Tuck your ring and pinky fingers in and lock them, like a loose fist with just those two. Now open and close using only your pointer and middle fingers.",
-    "Drill: set the top chopstick down. Hold just the bottom one in place for 5 seconds without it moving. Then add the top one back, held like a pencil.",
   ],
   wider: [
     "Make the opening bigger: straighten your pointer finger until the top tip lifts about an inch above the bottom tip, then bend to close.",
@@ -236,6 +240,9 @@ const HINT_LADDERS: Record<string, string[]> = {
     "Your thumb tip anchors the top chopstick. Press it firmly against the top stick, with your pointer and middle fingertips on the other side.",
   ],
 };
+
+// Faults about the situation rather than technique; always shown first.
+const SITUATIONAL_FAULTS = new Set(["no-hand", "two-hands", "reading"]);
 
 // A grip that falls apart this long during the motion steps sends the user
 // back to the grip step.
@@ -255,6 +262,7 @@ export class ChopstickLesson {
   private failingSince: number | null = null;
   private feedback = new FeedbackStabilizer();
   private checking = false;
+  private checkingKind: VisionCheck | null = null;
   private verdict: Verdict | null = null;
   private recheckAt = 0;
   // The AI's latest message: a correction stays until the step changes or
@@ -276,6 +284,24 @@ export class ChopstickLesson {
     const fault = this.escalate(findFault(snapshot, step.id));
 
     this.applyVerdict(now);
+
+    // The ring finger is only a stand-in for the real goal — a still bottom
+    // chopstick — and tendon coupling plus occlusion make it noisy. Once
+    // every ring-finger hint has been given, have the AI judge the real goal
+    // directly from an open and a closed frame instead of repeating hints.
+    const ringHintsGiven = this.faultCounts.get("anchor") ?? 0;
+    if (
+      step.id === "motion" &&
+      fault?.id.startsWith("anchor") &&
+      ringHintsGiven > HINT_LADDERS.anchor.length &&
+      snapshot.state === "active" &&
+      !this.checking &&
+      now >= this.recheckAt &&
+      // Let the last hint be read (and tried) before the AI weighs in.
+      !this.feedback.isHolding(now)
+    ) {
+      this.startCheck("motion", snapshot);
+    }
 
     // Cap each frame gap so a stalled tab can't bank a big chunk of "good" time.
     const dt = this.lastUpdate === null ? 0 : Math.min(now - this.lastUpdate, 300);
@@ -319,11 +345,18 @@ export class ChopstickLesson {
 
     if (now > this.aiFeedbackUntil) this.aiFeedback = null;
 
+    // What the user sees, most urgent first. While an AI verdict is on screen
+    // it outranks the tracker's technique faults: it's the more direct
+    // evidence, and the learner needs time to read and act on it.
     const current = STEPS[this.stepIndex];
+    const situational = fault && SITUATIONAL_FAULTS.has(fault.id) ? fault : null;
+    const checking =
+      this.checkingKind === "motion" ? FEEDBACK.watchingClosely : FEEDBACK.checking;
     const message =
-      fault ??
-      (this.checking ? FEEDBACK.checking : null) ??
+      situational ??
+      (this.checkingKind ? checking : null) ??
       this.aiFeedback ??
+      fault ??
       praise(current.id);
 
     const shown = this.feedback.update(message, now);
@@ -377,8 +410,16 @@ export class ChopstickLesson {
     const stepIndex = this.stepIndex;
     const startedAt = performance.now();
     this.checking = true;
+    this.checkingKind = check;
     this.verify(check, snapshot.grip)
       .then((result) => {
+        // The motion check is an extra opinion, not a gate: if it can't run
+        // (no clear open–close pair yet, or the AI is unreachable), quietly
+        // try again shortly while the tracker's hints carry on.
+        if (!result && check === "motion") {
+          this.recheckAt = performance.now() + 3000;
+          return;
+        }
         this.verdict = result ? { stepIndex, ...result } : "unavailable";
         if (result) {
           this.onEvent({
@@ -397,6 +438,7 @@ export class ChopstickLesson {
       })
       .finally(() => {
         this.checking = false;
+        this.checkingKind = null;
       });
   }
 
@@ -430,7 +472,13 @@ export class ChopstickLesson {
       this.recheckAt = now + minimumShowMs(feedback) + ADJUST_MS;
     }
     this.aiFeedback = feedback;
-    this.aiFeedbackUntil = verdict.pass ? now + AI_PRAISE_MS : Infinity;
+    // A verdict is new, direct evidence: show it now rather than queueing it
+    // behind the previous hint, so its reading time and the recheck timer
+    // start together.
+    this.feedback.show(feedback, now);
+    this.aiFeedbackUntil = verdict.pass
+      ? now + AI_PRAISE_MS
+      : now + minimumShowMs(feedback) + ADJUST_MS;
   }
 
   private goTo(stepIndex: number) {
@@ -508,6 +556,18 @@ class FeedbackStabilizer {
 
   reset() {
     this.current = null;
+    this.candidate = null;
+  }
+
+  /** True while the current message is still within its reading time. */
+  isHolding(now: number) {
+    return !!this.current && now - this.shownAt < minimumShowMs(this.current);
+  }
+
+  /** Replaces the current message immediately, skipping the hold. */
+  show(feedback: Feedback, now: number) {
+    this.current = feedback;
+    this.shownAt = now;
     this.candidate = null;
   }
 

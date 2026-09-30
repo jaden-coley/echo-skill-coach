@@ -139,7 +139,8 @@ export default function CameraCapture() {
     const analyzer = new ChopstickAnalyzer();
     const recorder = new SessionRecorder(convex, getLearnerKey());
     recorder.sessionId.then(() => setRecording(true), () => {});
-    const chopstickLesson = new ChopstickLesson(verifyWithAi(video), (event) =>
+    const motionFrames = new MotionFrames();
+    const chopstickLesson = new ChopstickLesson(verifyWithAi(video, motionFrames), (event) =>
       recorder.record(event),
     );
     let lessonStep = 1;
@@ -178,6 +179,9 @@ export default function CameraCapture() {
         lessonStep = view.step;
         setLesson(view);
         recorder.sample(lessonStep, next, now);
+        if (next.state === "active" && next.debug) {
+          motionFrames.observe(next.debug.pivotBend, now, () => captureJpeg(video, 640));
+        }
         lastSnapshotTime = now;
       }
       framesSinceSample++;
@@ -349,23 +353,60 @@ export default function CameraCapture() {
   );
 }
 
-/** Sends the current video frame to the AI coach's vision check. */
-function verifyWithAi(video: HTMLVideoElement): Verifier {
+/** Sends frames to the AI coach's vision check. */
+function verifyWithAi(video: HTMLVideoElement, motionFrames: MotionFrames): Verifier {
   return async (check, gripShape) => {
-    const image = captureJpeg(video, 640);
-    if (!image) return null;
-
-    const response = await fetch("/api/coach/check", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ check, image, gripShape }),
-    });
-    if (!response.ok) {
-      console.warn("AI check unavailable", await response.text());
-      return null;
+    if (check === "motion") {
+      const images = motionFrames.pair();
+      return images ? postCheck({ check, images, gripShape }) : null;
     }
-    return (await response.json()) as VisionVerdict;
+    const image = captureJpeg(video, 640);
+    return image ? postCheck({ check, image, gripShape }) : null;
   };
+}
+
+async function postCheck(payload: object): Promise<VisionVerdict | null> {
+  const response = await fetch("/api/coach/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    console.warn("AI check unavailable", await response.text());
+    return null;
+  }
+  return (await response.json()) as VisionVerdict;
+}
+
+/**
+ * Keeps the most-open and most-closed frames of the last few seconds of
+ * practice, so the AI can compare the two ends of one open–close motion.
+ * Pointer + middle finger bend is lowest when the chopsticks are open.
+ */
+class MotionFrames {
+  private open: { bend: number; time: number; image: string } | null = null;
+  private closed: { bend: number; time: number; image: string } | null = null;
+  private lastCapture = 0;
+
+  observe(bend: number, now: number, capture: () => string | null) {
+    const stale = (frame: { time: number } | null) => !frame || now - frame.time > 4000;
+    const moreOpen = stale(this.open) || bend < this.open!.bend;
+    const moreClosed = stale(this.closed) || bend > this.closed!.bend;
+    // Capturing costs a canvas encode, so at most a few per second.
+    if ((!moreOpen && !moreClosed) || now - this.lastCapture < 200) return;
+    const image = capture();
+    if (!image) return;
+    this.lastCapture = now;
+    if (moreOpen) this.open = { bend, time: now, image };
+    if (moreClosed) this.closed = { bend, time: now, image };
+  }
+
+  /** [open, closed], or null if there isn't a real open–close to compare. */
+  pair(): [string, string] | null {
+    if (!this.open || !this.closed) return null;
+    if (this.closed.bend - this.open.bend < 8) return null;
+    return [this.open.image, this.closed.image];
+  }
 }
 
 function captureJpeg(video: HTMLVideoElement, maxWidth: number) {

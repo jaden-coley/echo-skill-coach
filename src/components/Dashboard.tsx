@@ -175,6 +175,12 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 
 type SessionData = FunctionReturnType<typeof api.sessions.get>;
 
+const CHECK_LABELS = {
+  holding: "holding the chopsticks",
+  grip: "grip",
+  motion: "bottom chopstick staying still",
+} as const;
+
 /** The session's most frequent mistakes, each with the drill that fixes it. */
 function WhatToWorkOn({ struggles }: { struggles: SessionData["struggles"] }) {
   const most = struggles[0]?.count ?? 1;
@@ -229,7 +235,7 @@ function Timeline({ data }: { data: SessionData }) {
       time: c._creationTime,
       icon: "◎",
       tone: c.pass ? "text-emerald-300" : "text-amber-300",
-      title: `AI check ${c.pass ? "passed" : "not yet"} — ${c.check === "holding" ? "holding" : "grip"}${
+      title: `AI check ${c.pass ? "passed" : "not yet"} — ${CHECK_LABELS[c.check]}${
         c.issue ? ` (${c.issue})` : ""
       }`,
       detail: `${c.correction} · ${Math.round(c.confidence * 100)}% sure · ${(c.latencyMs / 1000).toFixed(1)}s`,

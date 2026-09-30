@@ -136,7 +136,7 @@ export class ChopstickAnalyzer {
     const worldLandmarks = result.worldLandmarks[0];
     const usable =
       landmarks && worldLandmarks ? this.accept(landmarks, aspectRatio) : false;
-    this.frames.push({ time, usable, hands: result.landmarks.length });
+    this.frames.push({ time, usable, hands: countDistinctHands(result.landmarks, aspectRatio) });
     if (!landmarks || !worldLandmarks || !usable) return [];
 
     // After a dropout, start the filters fresh instead of gliding across the gap.
@@ -229,6 +229,25 @@ export class ChopstickAnalyzer {
     const typical = percentile(this.palmHistory, 0.5);
     return Math.abs(palm / typical - 1) <= PALM_GLITCH_RATIO;
   }
+}
+
+/**
+ * MediaPipe sometimes reports the same hand twice (a second, overlapping
+ * detection around the fingers and sticks). Only count another hand when its
+ * wrist is clearly apart from the first — more than a palm length away.
+ */
+function countDistinctHands(hands: NormalizedLandmark[][], aspectRatio: number) {
+  const [first, ...others] = hands;
+  if (!first) return 0;
+  const at = (p: NormalizedLandmark) => ({ x: p.x * aspectRatio, y: p.y });
+  const wrist = at(first[WRIST]);
+  const knuckle = at(first[MIDDLE_MCP]);
+  const palm = Math.hypot(wrist.x - knuckle.x, wrist.y - knuckle.y);
+  const distinct = others.filter((hand) => {
+    const other = at(hand[WRIST]);
+    return Math.hypot(other.x - wrist.x, other.y - wrist.y) > palm;
+  });
+  return 1 + distinct.length;
 }
 
 function classifyGrip(pivotBend: number, anchorBend: number, thumbGap: number): GripShape {

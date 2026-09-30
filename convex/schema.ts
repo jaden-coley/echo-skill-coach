@@ -69,7 +69,7 @@ export default defineSchema({
   checks: defineTable({
     sessionId: v.id("sessions"),
     step: v.number(),
-    check: v.union(v.literal("holding"), v.literal("grip")),
+    check: v.union(v.literal("holding"), v.literal("grip"), v.literal("motion")),
     pass: v.boolean(),
     issue: v.string(),
     correction: v.string(),

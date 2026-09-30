@@ -209,6 +209,34 @@ const FEEDBACK = {
   },
 } satisfies Record<string, Feedback>;
 
+/*
+ * When the same mistake keeps coming back, repeating the same sentence
+ * doesn't teach anything. Each recurrence explains it a different way, and
+ * the last rung is a concrete drill. Rung 0 is the fault's base message.
+ */
+const HINT_LADDERS: Record<string, string[]> = {
+  anchor: [
+    "Think of the bottom chopstick as glued in place: it sits in the dip between your thumb and pointer finger, and rests on the side of your ring finger's tip. Press it there lightly.",
+    "Tuck your ring and pinky fingers in and lock them, like a loose fist with just those two. Now open and close using only your pointer and middle fingers.",
+    "Drill: set the top chopstick down. Hold just the bottom one in place for 5 seconds without it moving. Then add the top one back, held like a pencil.",
+  ],
+  wider: [
+    "Make the opening bigger: straighten your pointer finger until the top tip lifts about an inch above the bottom tip, then bend to close.",
+    "Slow it down and exaggerate: open as wide as is comfortable, pause, then close all the way until the tips touch.",
+  ],
+  isolate: [
+    "Keep your wrist and the rest of your hand still. Only your pointer and middle fingers bend to move the top chopstick.",
+    "Rest your forearm on the table so your wrist can't help. Now move the top chopstick with just your pointer and middle fingers.",
+  ],
+  fist: [
+    "Relax your grip. Your fingers shouldn't wrap around the chopsticks — the top one is held only by your fingertips, like a pencil.",
+    "Start fresh: put the chopsticks down and shake out your hand. Pick up the bottom one first and rest it in the dip of your thumb, then add the top one like a pencil.",
+  ],
+  loose: [
+    "Your thumb tip anchors the top chopstick. Press it firmly against the top stick, with your pointer and middle fingertips on the other side.",
+  ],
+};
+
 // A grip that falls apart this long during the motion steps sends the user
 // back to the grip step.
 const REGRESS_MS = 1500;
@@ -235,6 +263,8 @@ export class ChopstickLesson {
   private aiFeedbackUntil = 0;
   private aiMessages = 0;
   private lastShownId: string | null = null;
+  // How many times each fault has been shown in the current step.
+  private faultCounts = new Map<string, number>();
 
   constructor(
     private readonly verify: Verifier,
@@ -243,7 +273,7 @@ export class ChopstickLesson {
 
   update(snapshot: ChopstickSnapshot, now: number): LessonView {
     const step = STEPS[this.stepIndex];
-    const fault = findFault(snapshot, step.id);
+    const fault = this.escalate(findFault(snapshot, step.id));
 
     this.applyVerdict(now);
 
@@ -268,10 +298,16 @@ export class ChopstickLesson {
       }
     } else {
       this.passingSince = null;
+      // A technique mistake drains motion progress as fast as good motion
+      // fills it — passing means good technique clearly outweighs mistakes.
+      // A missing hand or a pause only holds progress where it is.
+      if (step.cumulative && fault.tone === "fix") {
+        this.goodMs = Math.max(0, this.goodMs - dt);
+      }
     }
 
     // Fall back to the grip step if the grip itself breaks down mid-motion.
-    const gripBroken = fault?.id === "fist" || fault?.id === "open";
+    const gripBroken = fault?.id.startsWith("fist") || fault?.id.startsWith("open");
     if (this.stepIndex >= 2 && gripBroken) {
       this.failingSince ??= now;
       if (now - this.failingSince >= REGRESS_MS) {
@@ -294,6 +330,8 @@ export class ChopstickLesson {
     if (shown.id !== this.lastShownId) {
       this.lastShownId = shown.id;
       if (shown.tone === "fix") {
+        const base = shown.id.split("#")[0];
+        this.faultCounts.set(base, (this.faultCounts.get(base) ?? 0) + 1);
         this.onEvent({
           type: "correction",
           step: this.stepIndex + 1,
@@ -312,6 +350,16 @@ export class ChopstickLesson {
       feedback: shown,
       progress: this.progress(now),
     };
+  }
+
+  /** Swaps a recurring fault's message for the next rung of its hint ladder. */
+  private escalate(fault: Feedback | null): Feedback | null {
+    const ladder = fault && HINT_LADDERS[fault.id];
+    if (!fault || !ladder) return fault;
+    const seen = this.faultCounts.get(fault.id) ?? 0;
+    if (seen === 0) return fault;
+    const rung = Math.min(seen, ladder.length);
+    return { ...fault, id: `${fault.id}#${rung}`, message: ladder[rung - 1] };
   }
 
   private progress(now: number) {
@@ -398,6 +446,7 @@ export class ChopstickLesson {
     this.feedback.reset();
     this.passingSince = null;
     this.goodMs = 0;
+    this.faultCounts.clear();
     this.failingSince = null;
     this.aiFeedback = null;
   }
@@ -417,10 +466,10 @@ function findFault(snapshot: ChopstickSnapshot, step: StepId): Feedback | null {
   if (step === "grip") return null;
 
   if (state === "idle") return FEEDBACK.still;
-  // Only blame the ring finger when it moves *more* than the pivot fingers —
-  // a ring finger hidden under the bottom stick gets estimated with a lot of
-  // sympathetic motion even when the user is doing it right.
-  if (metrics.anchorMovement.status !== "good" && metrics.isolation.value < 50) {
+  // Only blame the ring finger when it moves nearly as much as the pivot
+  // fingers — a ring finger hidden under the bottom stick gets estimated with
+  // a little sympathetic motion even when the user is doing it right.
+  if (metrics.anchorMovement.status !== "good" && metrics.isolation.value < 60) {
     return FEEDBACK.anchor;
   }
   if (metrics.pivotRange.status !== "good") return FEEDBACK.wider;

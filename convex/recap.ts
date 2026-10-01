@@ -14,13 +14,11 @@ import { summarizeStruggles } from "./struggles";
  */
 
 export const resend = new Resend(components.resend, {
-  // Deliver to real addresses. Note: until a sending domain is verified in
-  // Resend, the default onboarding@resend.dev sender only delivers to the
-  // Resend account owner's own email address.
+  // Deliver to real addresses. Recaps go out from RESEND_FROM (a verified
+  // domain); the onboarding@resend.dev fallback only delivers to the Resend
+  // account owner's own email address.
   testMode: false,
 });
-
-const FROM = process.env.RESEND_FROM ?? "E.C.H.O. Coach <onboarding@resend.dev>";
 
 export async function queueRecap(ctx: MutationCtx, session: Doc<"sessions">) {
   if (session.recapQueuedAt) return;
@@ -47,7 +45,8 @@ export async function queueRecap(ctx: MutationCtx, session: Doc<"sessions">) {
   const dashboardUrl = `${process.env.SITE_URL ?? ""}/dashboard`;
 
   await resend.sendEmail(ctx, {
-    from: FROM,
+    // Read per send, so a changed sender setting applies right away.
+    from: process.env.RESEND_FROM ?? "E.C.H.O. Coach <onboarding@resend.dev>",
     to: user.email,
     subject: `Your chopsticks session: step ${reached} of ${stepsTotal}`,
     html: recapHtml({

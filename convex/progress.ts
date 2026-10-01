@@ -59,7 +59,10 @@ export function bestFingerControl(
   exclude?: Id<"sessions">,
 ) {
   const values = sessions
-    .filter((s) => s._id !== exclude && s.bestIsolation !== undefined)
+    // Only sessions measured the sustained way count as records. They're the
+    // ones with a time zone: both shipped in the same release, and earlier
+    // single-reading bests could spike unfairly high.
+    .filter((s) => s._id !== exclude && s.bestIsolation !== undefined && s.tzOffsetMinutes !== undefined)
     .map((s) => s.bestIsolation!);
   return values.length ? Math.max(...values) : null;
 }

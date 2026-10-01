@@ -8,6 +8,8 @@ sessions.
 **Try it live: [echo-skill-coach.vercel.app](https://echo-skill-coach.vercel.app)** — no
 chopsticks handy? Two pens or pencils work for practice.
 
+**Watch the demo: [5-minute walkthrough](https://www.loom.com/share/ebca6e649c924139acba704140b25460)**
+
 > Built for the Modern Stack Hackathon with **Convex**, **OpenAI**, **Better Auth**, and
 > **Resend**.
 
@@ -128,5 +130,7 @@ to you.
 
 ## Credits
 
-Built by Jaden Coley, with help from [Claude Code](https://claude.com/claude-code) as a
-coding assistant.
+Built by Jaden Coley. I came up with the idea, made the product decisions, and tested
+every step on my own hands — it's how I actually learned to use chopsticks. Most of the
+code was written with [Claude Code](https://claude.com/claude-code) as my AI pair
+programmer; I'm learning to build as I go.

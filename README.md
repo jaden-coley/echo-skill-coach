@@ -121,3 +121,8 @@ single still frame (or, for the motion check, two) is sent to OpenAI to verify t
 chopsticks. Your measurements, lesson
 events, and the AI's verdicts are stored in Convex so your progress can be shown back
 to you.
+
+## Credits
+
+Built by Jaden Coley, with help from [Claude Code](https://claude.com/claude-code) as a
+coding assistant.

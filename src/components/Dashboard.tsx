@@ -9,6 +9,7 @@ import type { Doc, Id } from "../../convex/_generated/dataModel";
 import AccountMenu from "@/components/AccountMenu";
 import IsolationChart from "@/components/IsolationChart";
 import { getLearnerKey } from "@/lib/learnerKey";
+import { useProgressSummary } from "@/lib/useProgressSummary";
 
 /*
  * Live progress dashboard. Every panel is a Convex query subscription, so it
@@ -60,6 +61,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
+          <ProgressBanner />
           <SessionDetail sessionId={sessionId} learnerKey={learnerKey} />
           <SessionList
             sessions={sessions}
@@ -69,6 +71,50 @@ export default function Dashboard() {
         </>
       )}
     </div>
+  );
+}
+
+/** Streak + all-time stats: the reason to come back tomorrow. */
+function ProgressBanner() {
+  const summary = useProgressSummary();
+  if (!summary) return null;
+  const { streakDays, practicedToday } = summary;
+
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-transparent p-5">
+      <div>
+        <p className="text-2xl font-semibold text-white">
+          {streakDays > 0 ? `🔥 ${streakDays}-day streak` : "Start a streak today"}
+        </p>
+        <p className="mt-1 text-sm text-zinc-400">
+          {streakDays === 0
+            ? "Practice for at least 20 seconds to light your first day."
+            : practicedToday
+              ? "You've practiced today ✓ — come back tomorrow to keep it going."
+              : "Practice today to keep your streak alive."}
+        </p>
+      </div>
+      <dl className="flex gap-6 text-sm">
+        <div>
+          <dt className="text-xs text-zinc-500">Practice sessions</dt>
+          <dd className="font-mono text-lg text-white">{summary.practiceSessions}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Total practice</dt>
+          <dd className="font-mono text-lg text-white">
+            {formatDuration(summary.totalPracticeSeconds)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">🏆 Best finger control</dt>
+          <dd className="font-mono text-lg text-white">
+            {summary.bestFingerControl === null
+              ? "—"
+              : `${Math.round(summary.bestFingerControl)}%`}
+          </dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 

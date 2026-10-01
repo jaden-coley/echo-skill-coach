@@ -43,6 +43,9 @@ export default defineSchema({
     // claims the device's earlier sessions, so progress follows the account.
     learnerKey: v.string(),
     userToken: v.optional(v.string()),
+    // The learner's getTimezoneOffset() when the session started, so streak
+    // days follow their local calendar.
+    tzOffsetMinutes: v.optional(v.number()),
     skillId: v.id("skills"),
     status: v.union(v.literal("active"), v.literal("ended")),
     endedAt: v.optional(v.number()),
@@ -52,6 +55,7 @@ export default defineSchema({
     checksFailed: v.number(),
     correctionsShown: v.number(),
     activeSeconds: v.number(),
+    // Best *sustained* finger control (isolation) this session — see recordSample.
     bestIsolation: v.optional(v.number()),
     lastMetrics: v.optional(metricsValidator),
     // Set once the end-of-session recap email has been queued.

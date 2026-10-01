@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { gripValidator, metricsValidator } from "./schema";
+import { viewerSessions } from "./progress";
 import { queueRecap } from "./recap";
 import { CHOPSTICKS } from "./skills";
 import { summarizeStruggles } from "./struggles";
@@ -53,9 +54,9 @@ async function ensureChopsticksSkill(ctx: MutationCtx) {
 }
 
 export const start = mutation({
-  args: { learnerKey: v.string() },
+  args: { learnerKey: v.string(), tzOffsetMinutes: v.optional(v.number()) },
   returns: v.id("sessions"),
-  handler: async (ctx, { learnerKey }) => {
+  handler: async (ctx, { learnerKey, tzOffsetMinutes }) => {
     const skillId = await ensureChopsticksSkill(ctx);
     const userToken = (await viewerToken(ctx)) ?? undefined;
 
@@ -77,6 +78,7 @@ export const start = mutation({
     return await ctx.db.insert("sessions", {
       learnerKey,
       userToken,
+      tzOffsetMinutes,
       skillId,
       status: "active",
       currentStep: 1,
@@ -182,10 +184,13 @@ export const recordSample = mutation({
   handler: async (ctx, { sessionId, learnerKey, step, metrics, grip, activeSeconds }) => {
     const session = await ownedSession(ctx, sessionId, learnerKey);
     await ctx.db.insert("metricSamples", { sessionId, step, metrics, grip });
+    // A personal best has to be *sustained*: it counts the lower of this and
+    // the previous reading (~4 s apart), so a one-frame spike can't set it.
+    const sustained = Math.min(metrics.isolation, session.lastMetrics?.isolation ?? 0);
     await ctx.db.patch("sessions", sessionId, {
       lastMetrics: metrics,
       activeSeconds: session.activeSeconds + Math.max(0, Math.min(activeSeconds, 10)),
-      bestIsolation: Math.max(session.bestIsolation ?? 0, metrics.isolation),
+      bestIsolation: Math.max(session.bestIsolation ?? 0, sustained),
     });
     return null;
   },
@@ -239,22 +244,7 @@ export const get = query({
  */
 export const listForLearner = query({
   args: { learnerKey: v.string() },
-  handler: async (ctx, { learnerKey }) => {
-    const token = await viewerToken(ctx);
-    if (token) {
-      return await ctx.db
-        .query("sessions")
-        .withIndex("by_userToken", (q) => q.eq("userToken", token))
-        .order("desc")
-        .take(20);
-    }
-    const deviceSessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_learnerKey", (q) => q.eq("learnerKey", learnerKey))
-      .order("desc")
-      .take(20);
-    return deviceSessions.filter((s) => !s.userToken);
-  },
+  handler: async (ctx, { learnerKey }) => viewerSessions(ctx, learnerKey, 20),
 });
 
 /**

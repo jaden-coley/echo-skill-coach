@@ -21,7 +21,10 @@ export class SessionRecorder {
     private readonly convex: ConvexReactClient,
     private readonly learnerKey: string,
   ) {
-    this.sessionId = convex.mutation(api.sessions.start, { learnerKey });
+    this.sessionId = convex.mutation(api.sessions.start, {
+      learnerKey,
+      tzOffsetMinutes: new Date().getTimezoneOffset(),
+    });
     this.sessionId.catch((error) => console.warn("Couldn't start a Convex session", error));
   }
 

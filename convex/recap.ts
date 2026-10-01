@@ -3,6 +3,7 @@ import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { authComponent } from "./auth";
+import { bestFingerControl, computeStreak, localDay } from "./progress";
 import { summarizeStruggles } from "./struggles";
 
 /*
@@ -39,6 +40,25 @@ export async function queueRecap(ctx: MutationCtx, session: Doc<"sessions">) {
     .take(300);
 
   const struggle = summarizeStruggles(corrections)[0] ?? null;
+
+  // Streak and personal best across the learner's account.
+  const history = session.userToken
+    ? await ctx.db
+        .query("sessions")
+        .withIndex("by_userToken", (q) => q.eq("userToken", session.userToken))
+        .order("desc")
+        .take(100)
+    : [session];
+  const { streakDays } = computeStreak(
+    history,
+    localDay(Date.now(), session.tzOffsetMinutes),
+    session.tzOffsetMinutes,
+  );
+  const previousBest = bestFingerControl(history, session._id);
+  const newPersonalBest =
+    session.bestIsolation !== undefined &&
+    previousBest !== null &&
+    session.bestIsolation > previousBest;
   const stepsTotal = skill?.steps.length ?? 4;
   const reached = Math.min(session.highestStep, stepsTotal);
   const reachedTitle = skill?.steps[reached - 1]?.title ?? `Step ${reached}`;
@@ -57,6 +77,8 @@ export async function queueRecap(ctx: MutationCtx, session: Doc<"sessions">) {
       session,
       struggle,
       dashboardUrl,
+      streakDays,
+      newPersonalBest,
     }),
   });
   await ctx.db.patch("sessions", session._id, { recapQueuedAt: Date.now() });
@@ -70,6 +92,8 @@ function recapHtml(data: {
   session: Doc<"sessions">;
   struggle: { label: string; tip: string; count: number } | null;
   dashboardUrl: string;
+  streakDays: number;
+  newPersonalBest: boolean;
 }) {
   const { session, struggle } = data;
   const minutes = Math.max(1, Math.round(session.activeSeconds / 60));
@@ -86,9 +110,14 @@ function recapHtml(data: {
   <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
     <p style="font-size:13px;letter-spacing:.08em;color:#71717a;margin:0 0 8px;">E.C.H.O. · CHOPSTICKS</p>
     <h1 style="font-size:22px;color:#fafafa;margin:0 0 8px;">Nice work, ${escapeHtml(data.name || "there")}.</h1>
-    <p style="margin:0 0 20px;line-height:1.5;">
+    <p style="margin:0 0 ${data.streakDays ? "8px" : "20px"};line-height:1.5;">
       You reached <strong style="color:#fafafa;">step ${data.reached} of ${data.stepsTotal}: ${escapeHtml(data.reachedTitle)}</strong>.
     </p>
+    ${
+      data.streakDays
+        ? `<p style="margin:0 0 20px;line-height:1.5;color:#fbbf24;">🔥 <strong>${data.streakDays}-day practice streak</strong> — practice tomorrow to keep it going.</p>`
+        : ""
+    }
     <table role="presentation" cellspacing="8" style="width:100%;margin:0 -8px 20px;"><tr>
       ${stat("Practice time", `${minutes} min`, "Time spent actively opening and closing.")}
       ${stat(
@@ -97,9 +126,9 @@ function recapHtml(data: {
         "Times the AI coach looked at your chopsticks and confirmed you had it right.",
       )}
       ${stat(
-        "Finger control",
+        data.newPersonalBest ? "Finger control · 🏆 new best" : "Finger control",
         session.bestIsolation === undefined ? "—" : `${Math.round(session.bestIsolation)}%`,
-        "Your best share of the motion coming from your pointer + middle fingers. 70%+ is great.",
+        "Your best share of the motion coming from your pointer + middle fingers, held steady. 70%+ is great.",
       )}
     </tr></table>
     ${

@@ -11,6 +11,7 @@
 import type * as aiBudget from "../aiBudget.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as progress from "../progress.js";
 import type * as recap from "../recap.js";
 import type * as sessions from "../sessions.js";
 import type * as skills from "../skills.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   aiBudget: typeof aiBudget;
   auth: typeof auth;
   http: typeof http;
+  progress: typeof progress;
   recap: typeof recap;
   sessions: typeof sessions;
   skills: typeof skills;

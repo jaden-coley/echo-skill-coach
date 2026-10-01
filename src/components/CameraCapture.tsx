@@ -18,6 +18,8 @@ import {
 } from "@/lib/handTracking";
 import { getLearnerKey } from "@/lib/learnerKey";
 import { SessionRecorder } from "@/lib/sessionRecorder";
+import { useProgressSummary } from "@/lib/useProgressSummary";
+import type { Id } from "../../convex/_generated/dataModel";
 
 type CameraStatus =
   | "idle"
@@ -44,7 +46,13 @@ export default function CameraCapture() {
   const [snapshot, setSnapshot] = useState<ChopstickSnapshot | null>(null);
   const [lesson, setLesson] = useState<LessonView | null>(null);
   const [fps, setFps] = useState(0);
-  const [recording, setRecording] = useState(false);
+  const [sessionId, setSessionId] = useState<Id<"sessions"> | null>(null);
+  const progress = useProgressSummary(sessionId);
+  // A new record only counts against a previous one — not on your first session.
+  const newPersonalBest =
+    progress?.currentBestFingerControl != null &&
+    progress.previousBestFingerControl != null &&
+    progress.currentBestFingerControl > progress.previousBestFingerControl;
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -138,7 +146,7 @@ export default function CameraCapture() {
 
     const analyzer = new ChopstickAnalyzer();
     const recorder = new SessionRecorder(convex, getLearnerKey());
-    recorder.sessionId.then(() => setRecording(true), () => {});
+    recorder.sessionId.then(setSessionId, () => {});
     const motionFrames = new MotionFrames();
     const chopstickLesson = new ChopstickLesson(verifyWithAi(video, motionFrames), (event) =>
       recorder.record(event),
@@ -199,7 +207,7 @@ export default function CameraCapture() {
       recorder.end();
       setSnapshot(null);
       setLesson(null);
-      setRecording(false);
+      setSessionId(null);
     };
   }, [status, tracking, convex]);
 
@@ -326,7 +334,18 @@ export default function CameraCapture() {
         <CoachingPanel lesson={lesson} snapshot={snapshot} fps={fps} />
       )}
 
-      {recording && (
+      {newPersonalBest && progress?.currentBestFingerControl != null && (
+        <div
+          aria-live="polite"
+          className="w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 text-center text-sm text-emerald-200"
+        >
+          🏆 <strong>New personal best!</strong> Finger control{" "}
+          {Math.round(progress.currentBestFingerControl)}% — your previous best was{" "}
+          {Math.round(progress.previousBestFingerControl!)}%.
+        </div>
+      )}
+
+      {sessionId && (
         <div className="flex flex-col items-center gap-3">
           <button
             onClick={finishSession}

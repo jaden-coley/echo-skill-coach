@@ -5,6 +5,9 @@ to use chopsticks through your webcam: it tracks your hand live, measures your t
 corrects you in plain language one step at a time, and remembers your progress between
 sessions.
 
+**Try it live: [echo-skill-coach.vercel.app](https://echo-skill-coach.vercel.app)** — no
+chopsticks handy? Two pens or pencils work for practice.
+
 > Built for the Modern Stack Hackathon with **Convex**, **OpenAI**, **Better Auth**, and
 > **Resend**.
 
@@ -29,9 +32,10 @@ sessions.
    you through on its own. If the finger tracker keeps flagging your ring finger, the
    coach compares an *open* and a *closed* frame to judge the real goal directly: did
    the bottom chopstick stay still while only the top one moved?
-5. **Remembers you.** Sign in and every session is saved to your account. The progress
-   dashboard updates live while you practice, and finishing a session emails you a recap
-   with the one thing to focus on next time.
+5. **Remembers you — and gives you a reason to come back.** Sign in and every session is
+   saved to your account. The progress dashboard updates live while you practice, tracks
+   your daily practice streak and personal bests, and finishing a session emails you a
+   recap with the one thing to focus on next time.
 
 ## Why it isn't "just an LLM wrapper"
 
